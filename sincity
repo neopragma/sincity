@@ -136,8 +136,8 @@ EOF
 }
 
 function generate_app_rb_file {
-    maybe "echo \"    ./app.rb\""
-    cat << EOF > ./app.rb
+    maybe "echo \"    app/app.rb\""
+    cat << EOF > app/app.rb
 require 'sinatra'
 require 'json'
 
@@ -170,7 +170,7 @@ EOF
 function generate_config_ru_simple {
     maybe "echo \"    ./config.ru\""
     cat << EOF > ./config.ru
-require_relative './app.rb'
+require_relative 'app/app.rb'
 run Sinatra::Application
 EOF
 }
