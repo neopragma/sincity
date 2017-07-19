@@ -1,0 +1,372 @@
+#!/bin/bash
+
+# sincity
+#
+# Set up project skeleton for a Sinatra project
+#
+# For usage help run:
+# sincity --help
+#
+# Author: Dave Nicolette
+#----------------------------------------------------------------------------
+
+VERSION='sincity version 0.0.1 2017-07-13'
+PROJECT=
+STRUCTURE="microservices"
+VERBOSE=
+FORCE=
+
+declare -a microservices_directories=(
+    "config"
+    "app"
+    "spec"
+    "features/support"
+    "features/step_definitions")
+
+declare -a webapp_directories=(
+    "config"
+    "app/controllers"
+    "app/helpers"
+    "app/models"
+    "app/views"
+    "spec/controllers"
+    "spec/helpers")
+
+declare -a initializers=(
+    "bundle install --path vendor/dependencies"
+    "bundle exec rspec --init"
+    "mv spec/spec_helper.rb spec/spec_helper_rb.generated"
+    "bundle exec cucumber --init"
+    "git init"
+    "git add ."
+    "git commit -m '"Init"'")
+
+
+function show_help {
+    echo 'Generates a skeleton directory structure for a Sinatra project'
+    echo 'Usage:'
+    echo 'sincity -p|--project theprojectname'
+    echo '        -s|--structure microservices|webapp'
+    echo '        -v|--verbose'
+    echo '        -f|--force (replace existing project directory, if any)'
+    echo '        -h|--help'
+    echo '           --version'
+}
+
+
+function show_options {
+    echo 'sincity options selected:'
+    echo "    VERBOSE=$VERBOSE"
+    echo "    PROJECT=$PROJECT"
+    echo "    STRUCTURE=$STRUCTURE"
+    echo "    FORCE=$FORCE"
+}
+
+
+function create_directory {
+    maybe "echo \"    ./$1\""
+    mkdir -p "$1"
+}
+
+
+function setup {
+    maybe "echo \"Setting up project $PROJECT\""
+    maybe "echo \"Creating directories for a $STRUCTURE project\""
+    if [ -e "$PROJECT" ]; then
+      if [ "$FORCE" ]; then
+        maybe "echo \"Replacing existing $PROJECT directory\""
+        $(rm -rf "$PROJECT")
+      else
+        echo "Directory $PROJECT exists and --force was not specified. Aborting."
+        exit 0
+      fi
+    fi
+    $(mkdir -p "$PROJECT")
+    pushd "$PROJECT"
+
+    while [ "$1" ]
+    do
+        create_directory "$1"
+        shift
+    done
+}
+
+
+function generate_cucumber_files_simple {
+    maybe "echo \"generating cucumber files\""
+    maybe "echo \"    ./features/app.feature\""
+    cat << EOF > ./features/app.feature
+Feature: Verify installation of skeleton microservices app
+
+Scenario: Retrieval of plain text content
+  When client invokes the default route
+  Then the service returns the text "Welcome to Sinatra"
+
+Scenario: Retrieval of JSON content
+  When the client invokes the sample JSON route
+  Then the service returns the "welcome" JSON document
+
+EOF
+
+    maybe "echo \"    ./features/step_definitions/app_steps.rb\""
+    cat << EOF > ./features/step_definitions/app_steps.rb
+When(/^client invokes the default route$/) do
+  @response = RestClient.get 'http://localhost:9292/'
+end
+
+Then(/^the service returns the text "Welcome to Sinatra"$/) do
+  expect(@response).to eq 'Welcome to Sinatra'
+end
+
+When(/^the client invokes the sample JSON route$/) do
+  @response = RestClient.get 'http://localhost:9292/json'
+end
+
+Then(/^the service returns the "welcome" JSON document$/) do
+  expect(JSON.parse(@response)["message"]).to eq 'Welcome to Sinatra'
+end
+EOF
+
+    maybe "echo \"    ./features/support/env.rb\""
+    cat << EOF > ./features/support/env.rb
+require 'rest-client'
+require 'rspec/expectations'
+require 'json'
+EOF
+}
+
+function generate_app_rb_file {
+    maybe "echo \"    ./app.rb\""
+    cat << EOF > ./app.rb
+require 'sinatra'
+require 'json'
+
+get '/' do
+  'Welcome to Sinatra'
+end
+
+get '/json' do
+  content_type :json
+  { :message => 'Welcome to Sinatra' }.to_json
+end
+EOF
+}
+
+
+function generate_app_spec_webapp {
+    maybe "echo \"    ./spec/app_controller_spec.rb\""
+    cat << EOF > ./spec/controllers/app_spec.rb
+require "spec_helper"
+
+RSpec.describe AppController do
+  def app_controller
+    AppController
+  end
+end
+EOF
+}
+
+
+function generate_config_ru_simple {
+    maybe "echo \"    ./config.ru\""
+    cat << EOF > ./config.ru
+require_relative './app.rb'
+run Sinatra::Application
+EOF
+}
+
+
+function generate_environment_rb_file {
+    maybe "echo \"creating config/environment.rb file\""
+    cat << EOF > ./config/environment.rb
+require "rubygems"
+require "bundler"
+
+Bundler.require(:default)                   # load all the default gems
+Bundler.require(Sinatra::Base.environment)  # load all the environment specific gems
+
+require "active_support/deprecation"
+require "active_support/all"
+
+\$db = []                                    # a fake database
+EOF
+}
+
+
+function generate_gemfile_simple {
+    maybe "echo \"    ./Gemfile\""
+    cat << EOF > ./Gemfile
+source 'https://rubygems.org'
+
+gem 'rack'
+gem 'sinatra'
+gem 'activesupport'
+gem 'json'
+
+group :test do
+    gem 'rake'
+    gem 'rspec'
+    gem 'rack-test'
+    gem 'cucumber'
+    gem 'rest-client'
+end
+EOF
+}
+
+
+function generate_gitignore_file {
+    maybe "echo \"generating .gitignore file\""
+    cat << EOF > ./.gitignore
+.DS_STORE
+*.swp
+*.rbc
+*.sass-cache
+/pkg
+/doc/api
+/Gemfile.lock
+/coverage
+.yardoc
+vendor/*
+EOF
+}
+
+
+function generate_rakefile_simple {
+    maybe "echo \"generating Rakefile for microservices project\""
+    cat << EOF > ./Rakefile
+require 'rubygems'
+require 'cucumber'
+require 'cucumber/rake/task'
+require 'rspec/core/rake_task'
+
+RSpec::Core::RakeTask.new(:spec)
+task :default => :spec do |t|
+end
+
+namespace :features do
+  Cucumber::Rake::Task.new(:non_js) do |t|
+    t.profile = "webrat"
+  end
+
+  Cucumber::Rake::Task.new(:selenium) do |t|
+    t.profile = "selenium"
+  end
+end
+EOF
+}
+
+function generate_spec_helper_file {
+    maybe "echo \"generating spec/spec_helper.rb file\""
+    cat << EOF > ./spec/spec_helper.rb
+ENV['RACK_ENV'] = 'test'
+
+require "./config/environment"
+
+RSpec.configure do |config|
+  config.include Rack::Test::Methods
+
+  config.before(:each) do
+    \$db = []
+  end
+
+  config.expect_with :rspec do |expectations|
+    expectations.include_chain_clauses_in_custom_matcher_descriptions = true
+  end
+
+  config.mock_with :rspec do |mocks|
+    mocks.verify_partial_doubles = true
+  end
+
+  config.filter_run :focus
+  config.run_all_when_everything_filtered = true
+
+  config.disable_monkey_patching!
+
+  config.warnings = true
+
+  if config.files_to_run.one?
+    config.default_formatter = 'doc'
+  end
+
+  config.profile_examples = 10
+
+  config.order = :random
+
+  Kernel.srand config.seed
+end
+EOF
+}
+
+
+function generate_files_for_microservices {
+    maybe "echo \"Generating boilerplate files for a microservices project\""
+    generate_app_rb_file
+    generate_config_ru_simple
+    generate_gemfile_simple
+    generate_gitignore_file
+    generate_environment_rb_file
+    generate_cucumber_files_simple
+    generate_rakefile_simple
+    run_initializers
+    generate_spec_helper_file # must be after initializers or it will be overwritten
+}
+
+
+function generate_files_for_webapp {
+    maybe "echo \"generating boilerplate files for a webapp project\""
+
+# TODO: Fill this in
+}
+
+
+function run_initializers {
+    for ((i = 0; i < ${#initializers[@]}; i++))
+    do
+        maybe "echo \"attempting: ${initializers[$i]}\""
+        "$(${initializers[$i]})"
+    done
+}
+
+
+function maybe {
+    test "$VERBOSE" = true && eval "$1"
+}
+
+#==== end of functions ====
+
+if [ $# == 0 ]; then
+  show_help
+  exit 0
+fi
+
+TEMP=`getopt -o hfvp:s: --long help,force,version,verbose,project:,structure: -n 'sincity' -- "$@"`
+eval set -- "$TEMP"
+
+while true ; do
+    case "$1" in
+        -p|--project) PROJECT="$2" ; shift 2 ;;
+        -s|--structure)
+            case "$2" in
+                microservices|webapp) STRUCTURE="$2" ; shift 2 ;;
+                *) echo '--structure must be microservices or webapp' ; show_help ; exit 0 ;;
+            esac ;;
+        -v|--verbose) VERBOSE=true ; shift ;;
+        -f|--force) FORCE=true ; shift ;;
+        --version) echo "$VERSION" ; exit 0 ;;
+        -h|--help) show_help ; exit 0 ;;
+        --) shift ; break ;;
+        *) show_help ; exit 0 ;;
+    esac
+done
+
+[ -z "$PROJECT" ] && echo 'Please specify -p|--project projectname' && show_help && exit 1
+
+maybe show_options
+
+test "$STRUCTURE" = "microservices" && setup "${microservices_directories[@]}"  && "generate_files_for_$STRUCTURE"
+# test "$STRUCTURE" = "webapp" && setup "${webapp_directories[@]}" && "generate_files_for_$STRUCTURE"
+
+test "$STRUCTURE" = "webapp" && echo 'Sorry - support for setting up a webapp project is not yet implemented.'
+
+popd
+exit 0
