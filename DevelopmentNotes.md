@@ -36,7 +36,7 @@ Content-Length: 18
 service
 
 ```shell
-curl -I http://localhost:9292/json
+curl -s http://localhost:9292/json
 ```
 
 Expect:
